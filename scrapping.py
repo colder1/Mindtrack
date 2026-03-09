@@ -3,44 +3,69 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from datetime import datetime
 import time
 
-# Inicializa el navegador Safari
 driver = webdriver.Safari()
+wait = WebDriverWait(driver, 15)
 
-# Abre la página de inicio de sesión de Instagram
-driver.get('https://www.instagram.com/accounts/login/')
+# Ir al login
+driver.get("https://www.instagram.com/accounts/login/")
+time.sleep(3)
 
-# Espera explícita: espera hasta que el campo de nombre de usuario esté presente
-wait = WebDriverWait(driver, 10)  # Espera hasta 10 segundos
+# Llenar login
+username_input = wait.until(EC.presence_of_element_located((By.NAME, "email")))
+password_input = wait.until(EC.presence_of_element_located((By.NAME, "pass")))
 
-# Encuentra los campos de nombre de usuario y contraseña de manera más robusta
-username_input = wait.until(EC.presence_of_element_located((By.NAME, 'email')))  # Cambié 'username' a 'email'
-password_input = wait.until(EC.presence_of_element_located((By.NAME, 'pass')))  # Cambié 'password' a 'pass'
-
-# Escribe tus credenciales (reemplaza con tus datos)
-username_input.send_keys('')  # Cambia esto por tu usuario
-password_input.send_keys('')  # Cambia esto por tu contraseña
-
-# Envía el formulario para iniciar sesión
+username_input.send_keys("mindtrack_test")
+password_input.send_keys("Prueba26")
 password_input.send_keys(Keys.RETURN)
 
-# Espera unos segundos para asegurarte de que el inicio de sesión sea exitoso
+# Esperar a que entre
 time.sleep(5)
 
-# Cerrar ventana emergente de "guardar información de inicio de sesión"
+# Cerrar ventana de guardar inicio de sesión
 try:
-    # Esperar y encontrar el botón para cerrar la ventana emergente de "guardar información"
-    save_info_button = wait.until(EC.presence_of_element_located((By.XPATH, "//button[contains(text(), 'Guardar información')]")))
-    save_info_button.click()
-    print("Ventana emergente cerrada exitosamente.")
-except:
-    print("No apareció la ventana emergente de guardar información.")
+    ahora_no = wait.until(
+        EC.element_to_be_clickable((By.XPATH, "//*[text()='Ahora no']"))
+    )
+    ahora_no.click()
+    print("Se cerró la ventana de guardar inicio de sesión.")
+except Exception as e:
+    print("No apareció la ventana de guardar información:", e)
 
-# Si la página de inicio de sesión se cierra, ahora deberías estar en tu página de inicio o perfil
-print("Inicio de sesión exitoso!")
+# Ir al perfil
+driver.get("https://www.instagram.com/sweet_ricee/")
+time.sleep(5)
 
-# Aquí podrías seguir con el scraping del perfil
+# Scroll progresivo hasta que ya no cargue más
+last_height = driver.execute_script("return document.body.scrollHeight")
+intentos_sin_cambio = 0
+max_intentos_sin_cambio = 3
 
-# Opcional: Cierra el navegador
-# driver.quit()
+while intentos_sin_cambio < max_intentos_sin_cambio:
+    driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+    time.sleep(2.5)
+
+    new_height = driver.execute_script("return document.body.scrollHeight")
+
+    if new_height == last_height:
+        intentos_sin_cambio += 1
+    else:
+        intentos_sin_cambio = 0
+        last_height = new_height
+
+print("Scroll terminado.")
+
+# Guardar HTML con nombre único
+html_content = driver.page_source
+nombre_archivo = f"perfil_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+
+with open(nombre_archivo, "w", encoding="utf-8") as f:
+    f.write(html_content)
+
+print(f"HTML guardado en {nombre_archivo}")
+
+# Mantener abierto para revisar
+input("Presiona Enter para cerrar el navegador...")
+driver.quit()
