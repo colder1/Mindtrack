@@ -1,355 +1,162 @@
-import re
-import json
-import time
+import re, csv, json, time, os
 from datetime import datetime
 from bs4 import BeautifulSoup
-
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-
 # CONFIG
+CSV_PATH, RESULTADOS_DIR = "formato(Sheet1).csv", "resultados_ig"
+MAX_INTENTOS_SIN_CAMBIO, ESPERA_LOGIN, ESPERA_CAPTION = 3, 15, 4
 
-PERFIL_URL = "https://www.instagram.com/sweet_ricee/"
-MAX_INTENTOS_SIN_CAMBIO = 3
-ESPERA_LOGIN = 15
-ESPERA_CAPTION = 4
+# UTILIDADES
+def save_json(data, filename):
+    os.makedirs(RESULTADOS_DIR, exist_ok=True)
+    ruta = os.path.join(RESULTADOS_DIR, f"{filename}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+    with open(ruta, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    print(f"Guardado: {ruta}")
+    return ruta
 
+def limpiar_nombre_archivo(t):
+    return re.sub(r'[\\/*?:"<>|\s]', "_", str(t).strip()) if t else "sin_nombre"
 
-# LOGIN
+def pedir_rango_fechas():
+    while True:
+        try:
+            f_i = datetime.strptime(input("Fecha inicio (YYYY-MM-DD): ").strip(), "%Y-%m-%d")
+            f_f = datetime.strptime(input("Fecha fin (YYYY-MM-DD): ").strip(), "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+            if f_f >= f_i: return f_i, f_f
+            print("Error: Fecha fin menor a inicio.")
+        except ValueError: print("Formato inválido.")
 
+def obtener_fecha_post(driver):
+    try:
+        f_iso = driver.find_element(By.TAG_NAME, "time").get_attribute("datetime")
+        return datetime.fromisoformat(f_iso.replace("Z", "+00:00")).replace(tzinfo=None) if f_iso else None
+    except: return None
+
+def construir_resultado_anonimo(res):
+    return {
+        "id": res.get("id"), "paciente": str(res.get("id")),
+        "followers": res.get("followers"), "following": res.get("following"),
+        "posts": res.get("posts"), "rango_fechas": res.get("rango_fechas"),
+        "posts_data": [{k: p.get(k) for k in ["fecha_post_iso", "likes_text", "comments_text", "fecha_text", "caption"]} for p in res.get("posts_data", [])],
+        **({"error": res["error"]} if "error" in res else {})
+    }
+
+# LOGIN / CSV
 def iniciar_sesion(driver, wait):
     driver.get("https://www.instagram.com/accounts/login/")
-    time.sleep(3)
-
-    username_input = wait.until(EC.presence_of_element_located((By.NAME, "email")))
-    password_input = wait.until(EC.presence_of_element_located((By.NAME, "pass")))
-
-    username_input.send_keys("mindtrack_test")
-    password_input.send_keys("Prueba26")
-    password_input.send_keys(Keys.RETURN)
-
+    wait.until(EC.presence_of_element_located((By.NAME, "email"))).send_keys("mindtrack_test")
+    pw = wait.until(EC.presence_of_element_located((By.NAME, "pass")))
+    pw.send_keys("Prueba26" + Keys.RETURN)
     time.sleep(5)
+    try: wait.until(EC.element_to_be_clickable((By.XPATH, "//*[text()='Ahora no']"))).click()
+    except: pass
 
-    try:
-        ahora_no = wait.until(
-            EC.element_to_be_clickable((By.XPATH, "//*[text()='Ahora no']"))
-        )
-        ahora_no.click()
-        print("Se cerró la ventana de guardar inicio de sesión.")
-    except Exception as e:
-        print("No apareció la ventana de guardar información:", e)
+def limpiar_usuario(v):
+    if not v: return None
+    v = re.sub(r'https?://(www\.)?instagram\.com/|@', '', str(v).strip()).strip('/')
+    return v if v else None
 
+def cargar_usuarios(ruta):
+    with open(ruta, "r", encoding="utf-8-sig") as f:
+        return [{"id": r.get("id"), "usuario": u, "url": f"https://www.instagram.com/{u}/"} 
+                for r in csv.DictReader(f) if (u := limpiar_usuario(r.get("instagram")))]
 
-# SCROLL DEL PERFIL
-
-def hacer_scroll_completo(driver):
-    last_height = driver.execute_script("return document.body.scrollHeight")
-    intentos_sin_cambio = 0
-
-    while intentos_sin_cambio < MAX_INTENTOS_SIN_CAMBIO:
+# SCRAPING LOGIC
+def hacer_scroll(driver):
+    last_h, attempts = driver.execute_script("return document.body.scrollHeight"), 0
+    while attempts < MAX_INTENTOS_SIN_CAMBIO:
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         time.sleep(2.5)
+        new_h = driver.execute_script("return document.body.scrollHeight")
+        attempts, last_h = (attempts + 1, new_h) if new_h == last_h else (0, new_h)
 
-        new_height = driver.execute_script("return document.body.scrollHeight")
-
-        if new_height == last_height:
-            intentos_sin_cambio += 1
-        else:
-            intentos_sin_cambio = 0
-            last_height = new_height
-
-    print("Scroll terminado.")
-
-
-# GUARDAR HTML
-
-def guardar_html_perfil(driver):
-    html_content = driver.page_source
-    nombre_archivo = f"perfil_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
-
-    with open(nombre_archivo, "w", encoding="utf-8") as f:
-        f.write(html_content)
-
-    print(f"HTML guardado en {nombre_archivo}")
-    return nombre_archivo
-
-
-# PARSEAR HTML DEL PERFIL
-
-def parsear_html_perfil(archivo_html):
-    with open(archivo_html, "r", encoding="utf-8") as f:
-        html = f.read()
-
-    soup = BeautifulSoup(html, "html.parser")
-
-    og_title_tag = soup.find("meta", attrs={"property": "og:title"})
-    og_desc_tag = soup.find("meta", attrs={"property": "og:description"})
-    og_image_tag = soup.find("meta", attrs={"property": "og:image"})
-
-    og_title = og_title_tag.get("content") if og_title_tag else None
-    og_desc = og_desc_tag.get("content") if og_desc_tag else None
-    og_image = og_image_tag.get("content") if og_image_tag else None
-
-    username = None
-    nombre = None
-    followers = None
-    following = None
-    posts = None
-
-    if og_title:
-        m_title = re.search(
-            r"^(.*?)\s+\(@(.*?)\)\s+•",
-            og_title,
-            re.IGNORECASE
-        )
-        if m_title:
-            nombre = m_title.group(1).strip()
-            username = m_title.group(2).strip()
-
-    if og_desc:
-        m_desc = re.search(
-            r"(\d+)\s+seguidores,\s+(\d+)\s+seguidos,\s+(\d+)\s+publicaciones",
-            og_desc,
-            re.IGNORECASE
-        )
-        if m_desc:
-            followers = m_desc.group(1)
-            following = m_desc.group(2)
-            posts = m_desc.group(3)
-
-    links_posts = []
-    for a in soup.find_all("a", href=True):
-        href = a["href"]
-        if "/p/" in href or "/reel/" in href:
-            if href.startswith("/"):
-                href = "https://www.instagram.com" + href
-            href = href.split("?")[0]
-            if href not in links_posts:
-                links_posts.append(href)
-
+def parsear_html_perfil(html_path):
+    with open(html_path, "r", encoding="utf-8") as f: soup = BeautifulSoup(f.read(), "html.parser")
+    get_meta = lambda p: (tag.get("content") if (tag := soup.find("meta", attrs={"property": p})) else None)
+    title, desc = get_meta("og:title"), get_meta("og:description")
+    
+    m_t = re.search(r"^(.*?)\s+\(@(.*?)\)", title) if title else None
+    m_d = re.search(r"([^,]+) seguidores, ([^,]+) seguidos, ([^,]+) pub", desc) if desc else None
+    
+    links = list(set("https://www.instagram.com" + a["href"].split("?")[0] if a["href"].startswith("/") else a["href"].split("?")[0]
+                 for a in soup.find_all("a", href=True) if "/p/" in a["href"] or "/reel/" in a["href"]))
+    
     return {
-        "username": username,
-        "nombre": nombre,
-        "followers": followers,
-        "following": following,
-        "posts": posts,
-        "profile_pic": og_image,
-        "links_posts": links_posts
+        "username": m_t.group(2) if m_t else None, "nombre": m_t.group(1) if m_t else None,
+        "followers": m_d.group(1) if m_d else None, "following": m_d.group(2) if m_d else None,
+        "posts": m_d.group(3) if m_d else None, "profile_pic": get_meta("og:image"), "links_posts": links
     }
 
-
-# PROCESAR META DESCRIPTION
-
-def procesar_meta_description(texto):
-    if not texto:
-        return {
-            "likes_text": None,
-            "comments_text": None,
-            "username_post": None,
-            "fecha_text": None,
-            "caption": None,
-            "caption_raw": texto
-        }
-
-    texto = re.sub(r"\s+", " ", texto).strip()
-
-    resultado = {
-        "likes_text": None,
-        "comments_text": None,
-        "username_post": None,
-        "fecha_text": None,
-        "caption": None,
-        "caption_raw": texto
-    }
-
-    patron = re.search(
-        r"^(.*?)\,\s*(.*?)\s*-\s*(.*?)\s+el\s+(.*?):\s*\"(.*?)\"\.?\s*$",
-        texto,
-        re.IGNORECASE
-    )
-
-    if patron:
-        resultado["likes_text"] = patron.group(1).strip()
-        resultado["comments_text"] = patron.group(2).strip()
-        resultado["username_post"] = patron.group(3).strip()
-        resultado["fecha_text"] = patron.group(4).strip()
-        resultado["caption"] = patron.group(5).strip()
-        return resultado
-
-    patron2 = re.search(
-        r"^(.*?)\,\s*(.*?)\s*-\s*(.*?)\s+el\s+(.*?):\s*\"?(.*?)\"?\s*$",
-        texto,
-        re.IGNORECASE
-    )
-
-    if patron2:
-        resultado["likes_text"] = patron2.group(1).strip()
-        resultado["comments_text"] = patron2.group(2).strip()
-        resultado["username_post"] = patron2.group(3).strip()
-        resultado["fecha_text"] = patron2.group(4).strip()
-        resultado["caption"] = patron2.group(5).strip().rstrip(".")
-        return resultado
-
-    m_caption = re.search(r'"(.*?)"', texto)
-    if m_caption:
-        resultado["caption"] = m_caption.group(1).strip()
-
-    return resultado
-
-
-# EXTRAER CAPTION DESDE POST
-
-def extraer_caption_desde_post(driver):
-    candidatos = []
-
-    xpaths = [
-        "//article//h1",
-        "//article//ul//span",
-        "//article//div//span",
-    ]
-
-    for xpath in xpaths:
+def extraer_caption_post(driver):
+    for xpath in ["//article//h1", "//article//ul//span", "//article//div//span"]:
         try:
-            elementos = driver.find_elements(By.XPATH, xpath)
-            for el in elementos:
-                texto = el.text.strip()
-                if texto and texto not in candidatos:
-                    candidatos.append(texto)
-        except Exception:
-            pass
-
-    candidatos_filtrados = []
-    for texto in candidatos:
-        texto_limpio = re.sub(r"\s+", " ", texto).strip()
-        if len(texto_limpio) >= 15 and texto_limpio not in candidatos_filtrados:
-            candidatos_filtrados.append(texto_limpio)
-
-    if candidatos_filtrados:
-        return {
-            "likes_text": None,
-            "comments_text": None,
-            "username_post": None,
-            "fecha_text": None,
-            "caption": candidatos_filtrados[0],
-            "caption_raw": candidatos_filtrados[0]
-        }
-
+            texts = [el.text.strip() for el in driver.find_elements(By.XPATH, xpath) if len(el.text.strip()) >= 15]
+            if texts: return {k: (texts[0] if k in ["caption", "caption_raw"] else None) for k in ["likes_text", "comments_text", "username_post", "fecha_text", "caption", "caption_raw"]}
+        except: pass
+    
     try:
-        meta_desc = driver.find_element(By.XPATH, "//meta[@property='og:description']")
-        texto_meta = meta_desc.get_attribute("content")
-        return procesar_meta_description(texto_meta)
-    except Exception:
+        desc = driver.find_element(By.XPATH, "//meta[@property='og:description']").get_attribute("content")
+        m = re.search(r"^(.*?),\s*(.*?)\s*-\s*(.*?)\s+el\s+(.*?):\s*\"?(.*?)\"?\.?\s*$", re.sub(r"\s+", " ", desc))
         return {
-            "likes_text": None,
-            "comments_text": None,
-            "username_post": None,
-            "fecha_text": None,
-            "caption": None,
-            "caption_raw": None
+            "likes_text": m.group(1) if m else None, "comments_text": m.group(2) if m else None,
+            "username_post": m.group(3) if m else None, "fecha_text": m.group(4) if m else None,
+            "caption": m.group(5) if m else re.search(r'"(.*?)"', desc).group(1) if re.search(r'"(.*?)"', desc) else None,
+            "caption_raw": desc
         }
+    except: return {k: None for k in ["likes_text", "comments_text", "username_post", "fecha_text", "caption", "caption_raw"]}
 
-
-# VISITAR POSTS Y SACAR DATOS
-
-def extraer_captions(driver, links_posts):
-    posts_con_caption = []
-
-    for i, link in enumerate(links_posts, start=1):
-        print(f"\n[{i}/{len(links_posts)}] Procesando: {link}")
+def procesar_perfil(driver, item, f_i, f_f):
+    print(f"\nProcesando: {item['usuario']}")
+    driver.get(item["url"])
+    time.sleep(5)
+    hacer_scroll(driver)
+    
+    h_path = os.path.join(RESULTADOS_DIR, f"perfil_{limpiar_nombre_archivo(item['usuario'])}_{datetime.now().strftime('%H%M%S')}.html")
+    os.makedirs(RESULTADOS_DIR, exist_ok=True)
+    with open(h_path, "w", encoding="utf-8") as f: f.write(driver.page_source)
+    
+    info = parsear_html_perfil(h_path)
+    posts_data = []
+    for i, link in enumerate(info["links_posts"], 1):
         driver.get(link)
         time.sleep(ESPERA_CAPTION)
+        f_p = obtener_fecha_post(driver)
+        if f_p and f_i <= f_p <= f_f:
+            cap = extraer_caption_post(driver)
+            posts_data.append({"url": link, "fecha_post_iso": f_p.isoformat(), **cap})
+            print(f"[{i}] Post capturado: {f_p.date()}")
+        else: print(f"[{i}] Fuera de rango u omitido.")
 
-        datos_post = extraer_caption_desde_post(driver)
-
-        posts_con_caption.append({
-            "url": link,
-            "likes_text": datos_post["likes_text"],
-            "comments_text": datos_post["comments_text"],
-            "username_post": datos_post["username_post"],
-            "fecha_text": datos_post["fecha_text"],
-            "caption": datos_post["caption"],
-            "caption_raw": datos_post["caption_raw"]
-        })
-
-        print("CAPTION:", datos_post["caption"])
-        print("FECHA:", datos_post["fecha_text"])
-        print("LIKES:", datos_post["likes_text"])
-        print("COMMENTS:", datos_post["comments_text"])
-
-    return posts_con_caption
-
-
-# GUARDAR JSON FINAL
-
-def guardar_resultado_final(data):
-    nombre_json = f"perfil_y_captions_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    with open(nombre_json, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-    print(f"\nResultados guardados en {nombre_json}")
-    return nombre_json
-
-
-# MAIN
+    res = {**item, **info, "rango_fechas": {"inicio": f_i.strftime("%Y-%m-%d"), "fin": f_f.strftime("%Y-%m-%d")}, "posts_data": posts_data}
+    save_json(res, f"perfil_{limpiar_nombre_archivo(item['usuario'])}")
+    return res
 
 def main():
-    driver = webdriver.Safari()
+    usuarios = cargar_usuarios(CSV_PATH)
+    if not usuarios: return print("No hay usuarios.")
+    f_i, f_f = pedir_rango_fechas()
+    
+    driver = webdriver.Chrome()  # Cambio aquí para usar Chrome en lugar de Safari
     wait = WebDriverWait(driver, ESPERA_LOGIN)
-
+    resultados_totales = []
+    
     try:
         iniciar_sesion(driver, wait)
+        for item in usuarios:
+            try: resultados_totales.append(procesar_perfil(driver, item, f_i, f_f))
+            except Exception as e:
+                print(f"Error en {item['usuario']}: {e}")
+                resultados_totales.append({**item, "error": str(e), "posts_data": []})
+        
+        save_json({"rango": [f_i.isoformat(), f_f.isoformat()], "resultados": resultados_totales}, "global")
+        save_json({"resultados": [construir_resultado_anonimo(r) for r in resultados_totales]}, "global_anonimo")
+        input("Terminado. Enter para cerrar...")
+    finally: driver.quit()
 
-        driver.get(PERFIL_URL)
-        time.sleep(5)
-
-        hacer_scroll_completo(driver)
-
-        archivo_html = guardar_html_perfil(driver)
-
-        info_perfil = parsear_html_perfil(archivo_html)
-
-        posts_con_caption = extraer_captions(driver, info_perfil["links_posts"])
-
-        resultado_final = {
-            "username": info_perfil["username"],
-            "nombre": info_perfil["nombre"],
-            "followers": info_perfil["followers"],
-            "following": info_perfil["following"],
-            "posts": info_perfil["posts"],
-            "profile_pic": info_perfil["profile_pic"],
-            "posts_data": posts_con_caption
-        }
-
-        print("\n" + "=" * 60)
-        print("PERFIL EXTRAÍDO")
-        print("=" * 60)
-        print("USERNAME:", resultado_final["username"])
-        print("NOMBRE:", resultado_final["nombre"])
-        print("FOLLOWERS:", resultado_final["followers"])
-        print("FOLLOWING:", resultado_final["following"])
-        print("POSTS:", resultado_final["posts"])
-        print("PROFILE PIC:", resultado_final["profile_pic"])
-
-        print("\nPOST LINKS ENCONTRADOS:", len(info_perfil["links_posts"]))
-        for item in resultado_final["posts_data"]:
-            print("-" * 60)
-            print("LINK:", item["url"])
-            print("CAPTION:", item["caption"])
-            print("FECHA:", item["fecha_text"])
-            print("LIKES:", item["likes_text"])
-            print("COMMENTS:", item["comments_text"])
-
-        guardar_resultado_final(resultado_final)
-
-        input("\nPresiona Enter para cerrar el navegador...")
-
-    finally:
-        driver.quit()
-
-
-if __name__ == "__main__":
-    main()
+if __name__ == "__main__": main()
