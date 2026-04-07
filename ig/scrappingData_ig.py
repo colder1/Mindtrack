@@ -23,15 +23,6 @@ def save_json(data, filename):
 def limpiar_nombre_archivo(t):
     return re.sub(r'[\\/*?:"<>|\s]', "_", str(t).strip()) if t else "sin_nombre"
 
-def pedir_rango_fechas():
-    while True:
-        try:
-            f_i = datetime.strptime(input("Fecha inicio (YYYY-MM-DD): ").strip(), "%Y-%m-%d")
-            f_f = datetime.strptime(input("Fecha fin (YYYY-MM-DD): ").strip(), "%Y-%m-%d").replace(hour=23, minute=59, second=59)
-            if f_f >= f_i: return f_i, f_f
-            print("Error: Fecha fin menor a inicio.")
-        except ValueError: print("Formato inválido.")
-
 def obtener_fecha_post(driver):
     try:
         f_iso = driver.find_element(By.TAG_NAME, "time").get_attribute("datetime")
@@ -50,6 +41,7 @@ def construir_resultado_anonimo(res):
 # LOGIN / CSV
 def iniciar_sesion(driver, wait):
     driver.get("https://www.instagram.com/accounts/login/")
+    # Revertido a tus selectores originales (email / pass)
     wait.until(EC.presence_of_element_located((By.NAME, "email"))).send_keys("mindtrack_test")
     pw = wait.until(EC.presence_of_element_located((By.NAME, "pass")))
     pw.send_keys("Prueba26" + Keys.RETURN)
@@ -63,9 +55,28 @@ def limpiar_usuario(v):
     return v if v else None
 
 def cargar_usuarios(ruta):
+    usuarios = []
     with open(ruta, "r", encoding="utf-8-sig") as f:
-        return [{"id": r.get("id"), "usuario": u, "url": f"https://www.instagram.com/{u}/"} 
-                for r in csv.DictReader(f) if (u := limpiar_usuario(r.get("instagram")))]
+        reader = csv.DictReader(f)
+        for r in reader:
+            u = limpiar_usuario(r.get("instagram"))
+            if not u: continue
+            
+            # Extraemos las fechas específicas de este paciente
+            try:
+                f_i = datetime.strptime(r.get("F. Inicio", "").strip(), "%Y-%m-%d")
+                f_f = datetime.strptime(r.get("F. Fin", "").strip(), "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+                
+                usuarios.append({
+                    "id": r.get("id"), 
+                    "usuario": u, 
+                    "url": f"https://www.instagram.com/{u}/",
+                    "f_inicio": f_i,
+                    "f_fin": f_f
+                })
+            except:
+                print(f"Error en formato de fecha para usuario: {u}")
+    return usuarios
 
 # SCRAPING LOGIC
 def hacer_scroll(driver):
@@ -111,8 +122,10 @@ def extraer_caption_post(driver):
         }
     except: return {k: None for k in ["likes_text", "comments_text", "username_post", "fecha_text", "caption", "caption_raw"]}
 
-def procesar_perfil(driver, item, f_i, f_f):
-    print(f"\nProcesando: {item['usuario']}")
+def procesar_perfil(driver, item):
+    f_i, f_f = item["f_inicio"], item["f_fin"]
+    print(f"\nProcesando: {item['usuario']} (Rango: {f_i.date()} a {f_f.date()})")
+    
     driver.get(item["url"])
     time.sleep(5)
     hacer_scroll(driver)
@@ -133,28 +146,35 @@ def procesar_perfil(driver, item, f_i, f_f):
             print(f"[{i}] Post capturado: {f_p.date()}")
         else: print(f"[{i}] Fuera de rango u omitido.")
 
-    res = {**item, **info, "rango_fechas": {"inicio": f_i.strftime("%Y-%m-%d"), "fin": f_f.strftime("%Y-%m-%d")}, "posts_data": posts_data}
+    res = {
+        **item, 
+        **info, 
+        "rango_fechas": {"inicio": f_i.strftime("%Y-%m-%d"), "fin": f_f.strftime("%Y-%m-%d")}, 
+        "posts_data": posts_data,
+        "f_inicio": f_i.isoformat(), # Convertimos a string para el guardado final
+        "f_fin": f_f.isoformat()
+    }
     save_json(res, f"perfil_{limpiar_nombre_archivo(item['usuario'])}")
     return res
 
 def main():
     usuarios = cargar_usuarios(CSV_PATH)
     if not usuarios: return print("No hay usuarios.")
-    f_i, f_f = pedir_rango_fechas()
     
-    driver = webdriver.Chrome()  # Cambio aquí para usar Chrome en lugar de Safari
+    driver = webdriver.Chrome() 
     wait = WebDriverWait(driver, ESPERA_LOGIN)
     resultados_totales = []
     
     try:
         iniciar_sesion(driver, wait)
         for item in usuarios:
-            try: resultados_totales.append(procesar_perfil(driver, item, f_i, f_f))
+            try: resultados_totales.append(procesar_perfil(driver, item))
             except Exception as e:
                 print(f"Error en {item['usuario']}: {e}")
                 resultados_totales.append({**item, "error": str(e), "posts_data": []})
         
-        save_json({"rango": [f_i.isoformat(), f_f.isoformat()], "resultados": resultados_totales}, "global")
+        # Guardados finales
+        save_json({"resultados": resultados_totales}, "global")
         save_json({"resultados": [construir_resultado_anonimo(r) for r in resultados_totales]}, "global_anonimo")
         input("Terminado. Enter para cerrar...")
     finally: driver.quit()
