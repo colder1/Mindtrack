@@ -41,7 +41,6 @@ def construir_resultado_anonimo(res):
 # LOGIN / CSV
 def iniciar_sesion(driver, wait):
     driver.get("https://www.instagram.com/accounts/login/")
-    # Revertido a tus selectores originales (email / pass)
     wait.until(EC.presence_of_element_located((By.NAME, "email"))).send_keys("mindtrack_test")
     pw = wait.until(EC.presence_of_element_located((By.NAME, "pass")))
     pw.send_keys("Prueba26" + Keys.RETURN)
@@ -62,7 +61,6 @@ def cargar_usuarios(ruta):
             u = limpiar_usuario(r.get("instagram"))
             if not u: continue
             
-            # Extraemos las fechas específicas de este paciente
             try:
                 f_i = datetime.strptime(r.get("F. Inicio", "").strip(), "%Y-%m-%d")
                 f_f = datetime.strptime(r.get("F. Fin", "").strip(), "%Y-%m-%d").replace(hour=23, minute=59, second=59)
@@ -151,7 +149,7 @@ def procesar_perfil(driver, item):
         **info, 
         "rango_fechas": {"inicio": f_i.strftime("%Y-%m-%d"), "fin": f_f.strftime("%Y-%m-%d")}, 
         "posts_data": posts_data,
-        "f_inicio": f_i.isoformat(), # Convertimos a string para el guardado final
+        "f_inicio": f_i.isoformat(), 
         "f_fin": f_f.isoformat()
     }
     save_json(res, f"perfil_{limpiar_nombre_archivo(item['usuario'])}")
