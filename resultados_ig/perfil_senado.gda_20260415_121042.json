@@ -1,0 +1,108 @@
+{
+  "id": "3",
+  "usuario": "senado.gda",
+  "url": "https://www.instagram.com/senado.gda/",
+  "f_inicio": "2026-01-01T00:00:00",
+  "f_fin": "2026-05-01T23:59:59",
+  "username": "senado.gda",
+  "nombre": "Senado",
+  "followers": null,
+  "following": null,
+  "posts": null,
+  "profile_pic": "https://scontent.cdninstagram.com/v/t51.82787-19/650227268_18060310853401061_7415824038359389996_n.jpg?stp=dst-jpg_s100x100_tt6&_nc_cat=104&ccb=7-5&_nc_sid=bf7eb4&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLnd3dy4xMDgwLkMzIn0%3D&_nc_ohc=-yf6XjO0VwQQ7kNvwGgyVju&_nc_oc=AdqLrFc2YE_2MMrLZkESB9u91gEMqhP0RBbNNP-DfFh2wiePMgYkqxgKiRI78PVDUlg0mldIGi_Vxh6qB1G_QTC8&_nc_zt=24&_nc_ht=scontent.cdninstagram.com&_nc_gid=Qs3za72MdODot1ToNdtqkg&_nc_ss=7a2a8&oh=00_Af10ymQy1MW9YswYJiRgTKc0tu8r4dsJRaD6ik452NBJIg&oe=69E5AA66",
+  "links_posts": [
+    "https://www.instagram.com/senado.gda/p/DWAbs-wkRiC/",
+    "https://www.instagram.com/senado.gda/p/DWCukGQlFtx/",
+    "https://www.instagram.com/senado.gda/p/DWCwVTFFAli/",
+    "https://www.instagram.com/senado.gda/p/DWAb1eVlB-y/",
+    "https://www.instagram.com/senado.gda/p/DWAb333DVOn/",
+    "https://www.instagram.com/senado.gda/p/DWCu3gUlFB-/"
+  ],
+  "rango_fechas": {
+    "inicio": "2026-01-01",
+    "fin": "2026-05-01"
+  },
+  "posts_data": [
+    {
+      "url": "https://www.instagram.com/senado.gda/p/DWAbs-wkRiC/",
+      "fecha_post_iso": "2026-03-18T01:07:29",
+      "likes_text": null,
+      "comments_text": null,
+      "username_post": null,
+      "fecha_text": null,
+      "caption": null,
+      "caption_raw": "senado.gda el March 17, 2026",
+      "comments": []
+    },
+    {
+      "url": "https://www.instagram.com/senado.gda/p/DWCukGQlFtx/",
+      "fecha_post_iso": "2026-03-18T22:30:46",
+      "likes_text": null,
+      "comments_text": null,
+      "username_post": null,
+      "fecha_text": null,
+      "caption": "Conoce a las voces que representan cada escuela 🩵",
+      "caption_raw": "senado.gda el March 18, 2026: \"Conoce a las voces que representan cada escuela 🩵\". ",
+      "comments": []
+    },
+    {
+      "url": "https://www.instagram.com/senado.gda/p/DWCwVTFFAli/",
+      "fecha_post_iso": "2026-03-18T22:46:13",
+      "likes_text": null,
+      "comments_text": null,
+      "username_post": null,
+      "fecha_text": null,
+      "caption": "Conoce a las voces que representan LIFE 🩵✨",
+      "caption_raw": "senado.gda el March 18, 2026: \"Conoce a las voces que representan LIFE 🩵✨\". ",
+      "comments": []
+    },
+    {
+      "url": "https://www.instagram.com/senado.gda/p/DWAb1eVlB-y/",
+      "fecha_post_iso": "2026-03-18T01:08:37",
+      "likes_text": null,
+      "comments_text": null,
+      "username_post": null,
+      "fecha_text": null,
+      "caption": "¿Qué es el Senado Estudiantil? 📣",
+      "caption_raw": "senado.gda el March 17, 2026: \"¿Qué es el Senado Estudiantil? 📣\". ",
+      "comments": []
+    },
+    {
+      "url": "https://www.instagram.com/senado.gda/p/DWAb333DVOn/",
+      "fecha_post_iso": "2026-03-18T01:08:57",
+      "likes_text": null,
+      "comments_text": null,
+      "username_post": null,
+      "fecha_text": null,
+      "caption": null,
+      "caption_raw": "senado.gda el March 17, 2026",
+      "comments": []
+    },
+    {
+      "url": "https://www.instagram.com/senado.gda/p/DWCu3gUlFB-/",
+      "fecha_post_iso": "2026-03-18T22:33:25",
+      "likes_text": null,
+      "comments_text": null,
+      "username_post": null,
+      "fecha_text": null,
+      "caption": "Mesa Directiva 2026-2027 🩵⚡️",
+      "caption_raw": "senado.gda el March 18, 2026: \"Mesa Directiva 2026-2027 🩵⚡️\". ",
+      "comments": [
+        "carlos_a117",
+        "@dz.nancyy 😍 lo harán genial!",
+        "valesantiagoo_",
+        "😍😍😍",
+        "valeriatchl",
+        "👏👏👏",
+        "vanessaa.salazar",
+        "@antonioo.deltoro el mejoorrrrr 💘",
+        "Ealeeeee",
+        "jpromroc",
+        "@sarah.castaneda top personas más comunicadoras 💥💥💥",
+        "@antonioo.deltoro 🩵🩵🩵",
+        "danieladlca",
+        "puros cracksss 🙌🙌"
+      ]
+    }
+  ]
+}

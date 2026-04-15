@@ -34,7 +34,7 @@ def construir_resultado_anonimo(res):
         "id": res.get("id"), "paciente": str(res.get("id")),
         "followers": res.get("followers"), "following": res.get("following"),
         "posts": res.get("posts"), "rango_fechas": res.get("rango_fechas"),
-        "posts_data": [{k: p.get(k) for k in ["fecha_post_iso", "likes_text", "comments_text", "fecha_text", "caption"]} for p in res.get("posts_data", [])],
+        "posts_data": [{k: p.get(k) for k in ["fecha_post_iso", "likes_text", "comments_text", "fecha_text", "caption", "comments"]} for p in res.get("posts_data", [])],
         **({"error": res["error"]} if "error" in res else {})
     }
 
@@ -120,7 +120,45 @@ def extraer_caption_post(driver):
         }
     except: return {k: None for k in ["likes_text", "comments_text", "username_post", "fecha_text", "caption", "caption_raw"]}
 
-
+def extraer_comentarios_post(driver, caption_actual, usuario):
+    """Extrae los comentarios filtrando ruido de la interfaz, fechas y el caption duplicado."""
+    comentarios = []
+    try:
+        elementos = driver.find_elements(By.XPATH, "//main//*[@dir='auto']")
+        
+        ui_exacta = [
+            "responder", "ver traducción", "ocultar", "ver respuestas", "editado", 
+            "me gusta", "likes", "enviar", "todavía no hay comentarios.", 
+            "inicia la conversación.", "audio original"
+        ]
+        
+        for el in elementos:
+            texto = el.text.strip()
+            t_low = texto.lower()
+            
+            if not texto or texto == usuario:
+                continue            
+            if texto.startswith(f"{usuario}\n") or (caption_actual and texto == caption_actual):
+                continue           
+            if t_low in ui_exacta:
+                continue
+            if re.match(r"^\d+\s+(me\s+gusta|likes)$", t_low): 
+                continue            
+            if re.match(r"^ver\s+(las\s+)?\d+\s+respuestas?$", t_low): 
+                continue           
+            if t_low.startswith("más publicaciones de"): 
+                continue           
+            if re.match(r"^\d{1,2}\s+de\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)$", t_low): 
+                continue            
+            if re.match(r"^\d+\s*(sem|d|h|min|s)$", t_low): 
+                continue
+            
+            if texto not in comentarios:
+                comentarios.append(texto)
+                
+    except Exception as e: 
+        print(f"Aviso en comentarios: {e}")
+    return comentarios
 def procesar_perfil(driver, item):
     f_i, f_f = item["f_inicio"], item["f_fin"]
     print(f"\nProcesando: {item['usuario']} (Rango: {f_i.date()} a {f_f.date()})")
@@ -141,9 +179,18 @@ def procesar_perfil(driver, item):
         f_p = obtener_fecha_post(driver)
         if f_p and f_i <= f_p <= f_f:
             cap = extraer_caption_post(driver)
-            posts_data.append({"url": link, "fecha_post_iso": f_p.isoformat(), **cap})
-            print(f"[{i}] Post capturado: {f_p.date()}")
-        else: print(f"[{i}] Fuera de rango u omitido.")
+            
+            caption_texto = cap.get("caption") if cap else None
+            
+            comms = extraer_comentarios_post(driver, caption_texto, item["usuario"])
+            
+            posts_data.append({
+                "url": link, 
+                "fecha_post_iso": f_p.isoformat(), 
+                **cap,
+                "comments": comms
+            })
+            print(f"[{i}] Post y comentarios capturados: {f_p.date()}")
 
     res = {
         **item, 
