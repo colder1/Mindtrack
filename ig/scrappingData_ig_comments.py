@@ -30,17 +30,60 @@ def obtener_fecha_post(driver):
     except: return None
 
 def construir_resultado_anonimo(res):
+    mapa_anonimos = {}
+    contador_anon = 1
+    posts_anonimizados = []
+
+    for p in res.get("posts_data", []):
+        originales = p.get("comments", [])
+        comentarios_anonimos = []
+
+        i = 0
+        while i < len(originales):
+            texto_actual = originales[i]
+            
+            # Filtro para saltar textos de sistema que no son comentarios de usuarios
+            if texto_actual.startswith("Les gusta a") or "Hace " in texto_actual:
+                comentarios_anonimos.append(texto_actual)
+                i += 1
+                continue
+            
+            # Como los comentarios vienen en pares [Usuario, Comentario]
+            if i + 1 < len(originales):
+                user_real = texto_actual
+                comentario_texto = originales[i+1]
+
+                if user_real not in mapa_anonimos:
+                    mapa_anonimos[user_real] = f"Anónimo {contador_anon}"
+                    contador_anon += 1
+                
+                # Reemplazamos el nombre de usuario por el Anónimo asignado
+                comentarios_anonimos.append(mapa_anonimos[user_real])
+                comentarios_anonimos.append(comentario_texto)
+                i += 2 
+            else:
+                comentarios_anonimos.append(texto_actual)
+                i += 1
+
+        p_anon = p.copy()
+        p_anon["comments"] = comentarios_anonimos
+        posts_anonimizados.append(p_anon)
+
     return {
-        "id": res.get("id"), "paciente": str(res.get("id")),
-        "followers": res.get("followers"), "following": res.get("following"),
-        "posts": res.get("posts"), "rango_fechas": res.get("rango_fechas"),
-        "posts_data": [{k: p.get(k) for k in ["fecha_post_iso", "likes_text", "comments_text", "fecha_text", "caption", "comments"]} for p in res.get("posts_data", [])],
+        "id": res.get("id"),
+        "paciente": str(res.get("id")),
+        "followers": res.get("followers"),
+        "following": res.get("following"),
+        "posts": res.get("posts"),
+        "rango_fechas": res.get("rango_fechas"),
+        "posts_data": posts_anonimizados,
         **({"error": res["error"]} if "error" in res else {})
     }
 
 # LOGIN / CSV
 def iniciar_sesion(driver, wait):
     driver.get("https://www.instagram.com/accounts/login/")
+    # RESTAURADO: Nombres originales de los campos
     wait.until(EC.presence_of_element_located((By.NAME, "email"))).send_keys("mindtrack_test")
     pw = wait.until(EC.presence_of_element_located((By.NAME, "pass")))
     pw.send_keys("Prueba26" + Keys.RETURN)
@@ -121,7 +164,7 @@ def extraer_caption_post(driver):
     except: return {k: None for k in ["likes_text", "comments_text", "username_post", "fecha_text", "caption", "caption_raw"]}
 
 def extraer_comentarios_post(driver, caption_actual, usuario):
-    """Extrae los comentarios filtrando ruido de la interfaz, fechas y el caption duplicado."""
+    # RESTAURADO: Tu lógica original de extracción sin cambios
     comentarios = []
     try:
         elementos = driver.find_elements(By.XPATH, "//main//*[@dir='auto']")
@@ -159,6 +202,7 @@ def extraer_comentarios_post(driver, caption_actual, usuario):
     except Exception as e: 
         print(f"Aviso en comentarios: {e}")
     return comentarios
+
 def procesar_perfil(driver, item):
     f_i, f_f = item["f_inicio"], item["f_fin"]
     print(f"\nProcesando: {item['usuario']} (Rango: {f_i.date()} a {f_f.date()})")
@@ -179,9 +223,7 @@ def procesar_perfil(driver, item):
         f_p = obtener_fecha_post(driver)
         if f_p and f_i <= f_p <= f_f:
             cap = extraer_caption_post(driver)
-            
             caption_texto = cap.get("caption") if cap else None
-            
             comms = extraer_comentarios_post(driver, caption_texto, item["usuario"])
             
             posts_data.append({
@@ -219,8 +261,8 @@ def main():
                 print(f"Error en {item['usuario']}: {e}")
                 resultados_totales.append({**item, "error": str(e), "posts_data": []})
         
-        # Guardados finales
         save_json({"resultados": resultados_totales}, "global")
+        # Aquí se aplica la anonimización únicamente para el JSON anónimo
         save_json({"resultados": [construir_resultado_anonimo(r) for r in resultados_totales]}, "global_anonimo")
         input("Terminado. Enter para cerrar...")
     finally: driver.quit()
